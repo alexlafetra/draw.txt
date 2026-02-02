@@ -177,10 +177,18 @@ function App() {
     width:null,
     height:null,
     shown:true,
-    fit: 'width',
+    scale:1.0,
     opacity: 0.8,
-    type : 'image'
+    type : 'image',
+    leftCoord:0,
+    topCoord:0
   });
+
+  const backgroundImageRef = useRef(backgroundImage);
+  useEffect(() => { 
+    backgroundImageRef.current = backgroundImage;
+  },[backgroundImage]);
+
   const [mouseCoords,setMouseCoords] = useState(null);
   const [asciiPalettePreset,setAsciiPalettePreset] = useState('full');
   const [viewWindow,setViewWindow] = useState({
@@ -543,12 +551,15 @@ function App() {
     fallbackIndex : 0
   });
 
+  const presetsToDraw = ['barbed wire','big star','star portrait','rose','missile','house'];
+
   function animateRedraw(){
     if(redrawPlayer.current.playing)
       redrawPlayer.current.playing = false;
     else{
       redrawPlayer.current = {
         currentIndex : 0,
+        currentPreset : 0,
         playing:true,
         fallbackIndex : 0,
         currentCanvas : {...debugCanvas.current,data:' '.padEnd(debugCanvas.current.data.length,' ')}
@@ -561,27 +572,37 @@ function App() {
     const targetChar = debugCanvas.current.data.charAt(redrawPlayer.current.currentIndex);
     redrawPlayer.current.currentCanvas.data = writeCharacter(redrawPlayer.current.currentIndex,targetChar,redrawPlayer.current.currentCanvas);
     const next = seekNextCharToDraw();
+    if(redrawPlayer.current.restarted){
+      redrawPlayer.current.restarted = false;
+      loadPreset(presetsToDraw[redrawPlayer.current.currentPreset]);
+      redrawPlayer.current.currentCanvas = {...debugCanvas.current,data:' '.padEnd(debugCanvas.current.data.length,' ')};
+    }
     if(redrawPlayer.current.playing == false){
       updateCanvas();
       return;
     }
     if(next === false){
+      // redrawPlayer.current.currentPreset++;
+      // redrawPlayer.current.currentPreset%=presetsToDraw.length;
       //restart
       redrawPlayer.current = {
+        // restarted:true,
+        currentPreset : redrawPlayer.current.currentPreset,
         currentIndex : 0,
         playing:true,
         fallbackIndex : 0,
         currentCanvas : {...debugCanvas.current,data:' '.padEnd(debugCanvas.current.data.length,' ')}
       }
+      setTimeout(drawNext,1000);
     }
     else{
       redrawPlayer.current.currentIndex = next;
+      setActiveCharIndex(redrawPlayer.current.currentIndex);
+      setMouseCoords({x:redrawPlayer.current.currentIndex%redrawPlayer.current.currentCanvas.width,y:Math.floor(redrawPlayer.current.currentIndex/redrawPlayer.current.currentCanvas.width)});
+      setCurrentChar(targetChar);
+      setTimeout(drawNext,50);
+      updateCanvas(redrawPlayer.current.currentCanvas);
     }
-    setActiveCharIndex(redrawPlayer.current.currentIndex);
-    setMouseCoords({x:redrawPlayer.current.currentIndex%redrawPlayer.current.currentCanvas.width,y:Math.floor(redrawPlayer.current.currentIndex/redrawPlayer.current.currentCanvas.width)});
-    setCurrentChar(targetChar);
-    setTimeout(drawNext,1);
-    updateCanvas(redrawPlayer.current.currentCanvas);
   }
 
   function seekNextCharToDraw(){
@@ -1477,8 +1498,7 @@ function App() {
         if(file.type.startsWith('image')){
           const img = new Image();
           img.onload = function(){
-            setBackgroundImage({
-              ...backgroundImage,
+            setBackgroundImage({...backgroundImageRef.current,
               imageSrc:reader.result,
               width:img.width,
               height:img.height,
@@ -1491,11 +1511,8 @@ function App() {
         else if(file.type.startsWith('video')){
           console.log(file);
           console.log(reader.result);
-          setBackgroundImage({
-            ...backgroundImage,
+          setBackgroundImage({...backgroundImageRef.current,
             imageSrc:reader.result,
-            // width:.width,
-            // height:img.height,
             shown:true,
             type : 'video'
           });
@@ -1680,7 +1697,7 @@ function App() {
   }
 
   function loadPreset(title){
-    const newPreset = presets.find((element) => element.title === title);
+    const newPreset = presets.find((element) => element.title == title);
     debugCanvas.current = {...debugCanvas.current,data:newPreset.data,height:newPreset.height,width:newPreset.width};
     updateCanvas();
     setCanvasDimensionSliders({height:newPreset.height,width:newPreset.width});
@@ -1729,8 +1746,8 @@ function App() {
 
   function getBackgroundImageStyle(){
     const dimensions = {
-      width : (backgroundImage.fit == 'fill' || backgroundImage.fit == 'width') ? `calc(${debugCanvas.current.width}ch + ${(debugCanvas.current.width)*settings.textSpacing}px)` : undefined,
-      height : (backgroundImage.fit == 'fill' || backgroundImage.fit == 'height') ? `${(debugCanvas.current.height)*settings.lineHeight}em` : undefined,
+      width:backgroundImage.width*backgroundImage.scale,
+      height:backgroundImage.height*backgroundImage.scale
     }
     return({
       ...dimensions,
@@ -1738,7 +1755,8 @@ function App() {
       lineHeight:settings.lineHeight,
       opacity:backgroundImage.opacity,
       imageRendering:'pixelated',
-      display:'block'
+      marginLeft:`calc(0px - ${backgroundImage.leftCoord}ch - ${backgroundImage.leftCoord * settings.textSpacing}px)`,
+      marginTop:`${backgroundImage.topCoord * settings.lineHeight}em`,
     })
   }
  
@@ -1929,7 +1947,7 @@ function App() {
       </>
       }
       <div className = "highlight_box" style = {{...getHighlightBoxStyle(activeCharIndex),animation: 'blinkBackground 1s infinite'}}/>
-      <div id = "main-canvas" className = "ascii_canvas" onMouseEnter = {setMinimap} onMouseMove = {settings.textSelectable?nullHandler:handleMouseMove} onMouseDown = {settings.textSelectable?nullHandler:handleMouseDown} onMouseUp = {settings.textSelectable?nullHandler:handleMouseUp} onMouseLeave = {settings.textSelectable?nullHandler:handleMouseLeave} style = {canvasStyle}/>
+      <div id = "main-canvas" className = "ascii_canvas" onMouseEnter = {setMinimap} onMouseMove = {settings.textSelectable?nullHandler:handleMouseMove} onMouseDown = {settings.textSelectable?nullHandler:handleMouseDown} onMouseUp = {settings.textSelectable?nullHandler:handleMouseUp} onMouseLeave = {settings.textSelectable?nullHandler:handleMouseLeave} style = {canvasStyle}></div>
       <div className = "canvas_background" style = {backgroundStyle}>
         {addLineBreaksToText({data:createBackground({width:debugCanvas.current.width,height:debugCanvas.current.height}),width:debugCanvas.current.width+2,height:debugCanvas.current.height+2})}
       </div>
@@ -2155,22 +2173,29 @@ function App() {
         <div style = {{display:'flex',gap:'1ch'}}>
           <DropZone title = {`choose background image`} callback = {loadBackgroundImage}></DropZone>
           {backgroundImage.imageSrc && 
-            <div onClick = {() => {setBackgroundImage({...backgroundImage,shown:!backgroundImage.shown})}} style = {{cursor:'pointer',color:backgroundImage.shown?'blue':'white',backgroundColor:backgroundImage.shown?'transparent':'blue'}}>{backgroundImage.shown?'hide':'show'}</div>
+            <div onClick = {() => {setBackgroundImage({...backgroundImageRef.current,shown:!backgroundImage.shown})}} style = {{cursor:'pointer',color:backgroundImage.shown?'blue':'white',backgroundColor:backgroundImage.shown?'transparent':'blue'}}>{backgroundImage.shown?'hide':'show'}</div>
           }
         </div>
         {backgroundImage.imageSrc && backgroundImage.shown &&
           <>
           {backgroundImage.type == 'image' &&
-          <img src = {backgroundImage.imageSrc} style = {{maxWidth:'200px'}}></img>
+          <img src = {backgroundImage.imageSrc} style = {{imageRendering:'pixelated',width:'100%',maxWidth:'200px'}}></img>
           }
           {backgroundImage.type == 'video' &&
             <video src = {backgroundImage.imageSrc} autoPlay muted = {true} loop = {true} style = {{maxWidth:'200px'}}></video>
           }
-          <div style = {{color:'#555454ff',fontStyle:'italic'}}>resize to fit:</div>
-          <div style = {{display:'flex',gap:'1ch'}}>
-            <div style = {{cursor:'pointer',color:backgroundImage.fit == 'width' ? 'white':'blue',background:backgroundImage.fit == 'width' ? 'blue':'transparent'}} onClick = {()=>{setBackgroundImage({...backgroundImage,fit:'width'})}}>width</div>
-            <div style = {{cursor:'pointer',color:backgroundImage.fit == 'height' ? 'white':'blue',background:backgroundImage.fit == 'height' ? 'blue':'transparent'}} onClick = {()=>{setBackgroundImage({...backgroundImage,fit:'height'})}}>height</div>
-            <div style = {{cursor:'pointer',color:backgroundImage.fit == 'fill' ? 'white':'blue',background:backgroundImage.fit == 'fill' ? 'blue':'transparent'}} onClick = {()=>{setBackgroundImage({...backgroundImage,fit:'fill'})}}>fill</div>
+          <br></br>
+          <Slider maxLength = {20} label = {'scale'} callback = {(val) => {setBackgroundImage({...backgroundImageRef.current,scale:parseFloat(val)});}} value = {parseFloat(backgroundImage.scale)} defaultValue={1.0} min = {0.1} stepsize = {0.1} max = {10}></Slider>
+          <div style = {{minWidth:'1ch',gap:'1ch',marginLeft:'30px',display:'grid',gridTemplateColumns:'repeat(3,1fr)',gridTemplateRows:'repeat(3,1fr)',width:'fit-content',height:'fit-content'}}>
+            <div>{` `}</div>
+            <div style = {{cursor:'pointer',color:'white',backgroundColor:'blue'}} onClick = {()=>{setBackgroundImage({...backgroundImageRef.current,topCoord:backgroundImageRef.current.topCoord-1})}}>{`^`}</div>
+            <div>{` `}</div>
+            <div style = {{cursor:'pointer',color:'white',backgroundColor:'blue'}} onClick = {()=>{setBackgroundImage({...backgroundImageRef.current,leftCoord:backgroundImageRef.current.leftCoord+1})}}>{`<`}</div>
+            <div>{` `}</div>
+            <div style = {{cursor:'pointer',color:'white',backgroundColor:'blue'}} onClick = {()=>{setBackgroundImage({...backgroundImageRef.current,leftCoord:backgroundImageRef.current.leftCoord-1})}}>{`>`}</div>
+            <div>{` `}</div>
+            <div style = {{cursor:'pointer',color:'white',backgroundColor:'blue'}} onClick = {()=>{setBackgroundImage({...backgroundImageRef.current,topCoord:backgroundImageRef.current.topCoord+1})}}>{`v`}</div>
+            <div>{` `}</div>
           </div>
           <Slider maxLength = {10} label = {'opacity'} stepsize = {1} callback = {(val) => {setBackgroundImage({...backgroundImage,opacity:parseFloat(val/10)});}} value = {parseInt(backgroundImage.opacity*10)} defaultValue={parseInt(backgroundImage.opacity*10)} min = {0} max = {10}></Slider>
           </>
@@ -2182,14 +2207,13 @@ function App() {
         <div style = {{display:'flex',width:'fit-content',alignItems:'center',flexDirection:'column'}}>
         {imageRenderer.imageLoaded &&
         <>
-          <img className = "image_preview" src = {imageRenderer.imageSrc}/>
+          <img className = "image_preview" style = {{imageRendering:'pixelated'}} src = {imageRenderer.imageSrc}/>
           <div className = "ascii_button" onClick = {(e) => {imageLayer.current.data = ''; updateCanvas(); setImageRenderer({...imageRendererRef.current,imageLoaded:false,imageSrc:null})}}>{'~Xx clear xX~'}</div>
           <div className = "ascii_button" id = "commit-image-button" onClick = {(e) => {
             debugCanvas.current = {width:debugCanvas.current.width,height:debugCanvas.current.height,data:overlayImageOnCanvas()};
             updateCanvas();
             imageLayer.current.data = '';
             setImageRenderer({...imageRendererRef.current,imageLoaded:false,imageSrc:null});}}>{'[commit to canvas]'}</div>
-          <div className = "ascii_button" onClick = {(e) => {loadImageForRendering(imageRendererRef.current.imageSrc);}}>{'~rerender~'}</div>
           <div style = {{color:'#555454ff',fontStyle:'italic'}}>resize to fit:</div>
           <div style = {{display:'flex',gap:'1ch'}}>
             <div style = {{cursor:'pointer',color:imageRenderer.fit == 'width' ? 'white':'blue',background:imageRenderer.fit == 'width' ? 'blue':'transparent'}} onClick = {()=>{setImageRenderer({...imageRendererRef.current,fit:'width'})}}>width</div>
